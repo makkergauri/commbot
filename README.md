@@ -4,24 +4,6 @@ Multilingual disaster alerts over SMS and phone calls, built to keep working whe
 
 CommBot reads official warnings (CAP alerts from NDMA's SACHET platform, IMD, state disaster authorities), decides who needs to hear what, turns each alert into a short message in the person's own language, and sends it by SMS. People can also text back or call in to ask "what's happening?", "where's the relief camp?" or "what number do I call?".
 
-This README is the full build guide. If you follow it top to bottom you'll go from zero to a working system you can demo, then to something you could responsibly pilot with a district authority or NGO.
-
----
-
-## Contents
-
-1. [How it works](#1-how-it-works)
-2. [Project layout](#2-project-layout)
-3. [Five-minute demo](#3-five-minute-demo)
-4. [Build guide, phase by phase](#4-build-guide-phase-by-phase)
-5. [Safety design (read this before changing anything)](#5-safety-design)
-6. [Compliance checklist for India](#6-compliance-checklist-for-india)
-7. [Testing and drills](#7-testing-and-drills)
-8. [Deployment](#8-deployment)
-9. [Roadmap](#9-roadmap)
-10. [FAQ: why not LangChain / OpenAI Whisper?](#10-faq)
-
----
 
 ## 1. How it works
 
@@ -254,80 +236,4 @@ These are the rules the code is built around. If you change the code, keep them 
 9. **Degrade, don't die.** Every external dependency (LLM, feeds, Firebase, ASR) can fail without stopping alerts.
 
 ---
-
-## 6. Compliance checklist for India
-
-This isn't legal advice; check current rules with your partners and providers.
-
-- **TRAI DLT** registration for sender ID and templates before any bulk SMS.
-- **Consent (DPDP Act, 2023):** subscribe only people who opt in (`JOIN`), honour `STOP` immediately, collect only phone, district and language, and write down how long you keep data and who can see it.
-- **Don't impersonate authorities.** Brand messages as CommBot, cite the official source, and get written agreement from any authority whose alerts you relay at scale.
-- **Audit trail:** the `alerts` and `deliveries` tables record what was sent, to whom, when and who approved it. Back them up.
-- **Accessibility:** voice for people who can't read SMS, plain language, local scripts.
-
----
-
-## 7. Testing and drills
-
-```bash
-pytest -q                 # unit tests, including the hallucination tests
-python -m commbot.cli demo
-```
-
-Before any pilot, run a **tabletop drill**: replay last monsoon's real alerts through the system with `SMS_PROVIDER=console`, and have your partner check every message. Then run a **live drill** with volunteer phones only, and measure time from the bulletin being published to the SMS arriving, the percentage delivered, whether people understood the message (ask them to explain it back), and whether the offline path works with the router unplugged.
-
----
-
-## 8. Deployment
-
-**Single server:**
-
-```bash
-# web server
-gunicorn "commbot.wsgi:app" -b 0.0.0.0:5000 -w 2 --timeout 30
-# poller (separate process)
-python -m commbot.cli run
-```
-
-Put the web server behind HTTPS (Caddy or nginx with Let's Encrypt).
-
-**Docker:**
-
-```bash
-docker build -t commbot .
-docker run -d --env-file .env -v commbot-data:/data -p 5000:5000 commbot
-docker run -d --env-file .env -v commbot-data:/data commbot python -m commbot.cli run
-```
-
-**Edge box:** copy the project to `/opt/commbot`, create the venv, then install `scripts/commbot-poller.service` with systemd.
-
-Back up `commbot.db` regularly. It's a single file.
-
----
-
-## 9. Roadmap
-
-- More languages (Bhojpuri, Awadhi, Bengali, Assamese, Odia...) with community-reviewed templates
-- Automatic transliteration of place names (AI4Bharat IndicXlit) with a reviewed gazetteer
-- Central Water Commission river-level data as an input
-- Missed-call callback flow
-- Async voice answers for slower ASR models
-- Web dashboard for reviewers (approve/reject from a phone)
-- Cell broadcast integration via the authorities, for mass reach without subscriptions
-- LoRa mesh relay for when the cell network is down
-
----
-
-## 10. FAQ
-
-**Why isn't this using LangChain?** The LLM does one job here: a single structured-extraction call with strict validation. A plain client is easier to read, has fewer dependencies, and is easier to audit. If you later add multi-step agents or retrieval over large documents, `llm.py` is the one place to swap in LangChain.
-
-**Why faster-whisper instead of OpenAI's whisper package?** Same models, but noticeably faster on CPU with int8 quantization, which matters because of the phone webhook timeout.
-
-**Can I use this without Twilio?** Yes. Use `http_gateway` with an Android phone, or write a new `SMSSender` subclass for your provider. It's about 20 lines.
-
-**Is the sample data real?** No. Everything in `samples/` is fake and clearly labelled. Never test with real alert identifiers on real phones.
-
----
-
 
