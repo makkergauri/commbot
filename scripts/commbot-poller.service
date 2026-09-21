@@ -1,0 +1,17 @@
+# systemd unit for running the poller on a Linux box / Raspberry Pi.
+# Copy to /etc/systemd/system/, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now commbot-poller
+[Unit]
+Description=CommBot alert poller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/commbot
+EnvironmentFile=/opt/commbot/.env
+ExecStart=/opt/commbot/.venv/bin/python -m commbot.cli run
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

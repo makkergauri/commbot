@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FAKE SAMPLE. status=Exercise, so CommBot must ignore it completely. -->
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>DEMO-DRILL-0003</identifier>
+  <sender>demo@example.org</sender>
+  <sent>2026-09-20T10:00:00+05:30</sent>
+  <status>Exercise</status>
+  <msgType>Alert</msgType>
+  <scope>Public</scope>
+  <info>
+    <event>Earthquake</event>
+    <urgency>Immediate</urgency>
+    <severity>Extreme</severity>
+    <certainty>Observed</certainty>
+    <headline>DRILL: earthquake</headline>
+    <area><areaDesc>Bahraich district</areaDesc></area>
+  </info>
+</alert>

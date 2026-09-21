@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FAKE SAMPLE FOR TESTING. A low-priority advisory that should NOT be pushed. -->
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>DEMO-UP-HEAT-0002</identifier>
+  <sender>demo-imd@example.org</sender>
+  <sent>2026-09-20T08:00:00+05:30</sent>
+  <status>Actual</status>
+  <msgType>Alert</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>en-IN</language>
+    <category>Met</category>
+    <event>Heat Wave</event>
+    <urgency>Future</urgency>
+    <severity>Minor</severity>
+    <certainty>Possible</certainty>
+    <expires>2026-09-22T08:00:00+05:30</expires>
+    <senderName>DEMO IMD Lucknow</senderName>
+    <headline>Hot and humid conditions likely</headline>
+    <description>Hot and humid conditions are possible over Lucknow district in the coming days.</description>
+    <instruction>Drink plenty of water and avoid going out in the afternoon.</instruction>
+    <area><areaDesc>Lucknow district</areaDesc></area>
+  </info>
+</alert>

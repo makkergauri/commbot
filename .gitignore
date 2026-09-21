@@ -1,0 +1,9 @@
+.env
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+.pytest_cache/
+*.wav
+firebase-*.json
+run.log

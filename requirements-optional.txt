@@ -1,0 +1,7 @@
+# Install only what you use.
+
+# LLM-assisted extraction (Hugging Face Inference API)
+huggingface_hub>=0.24
+
+# Dashboard sync
+firebase-admin>=6.5

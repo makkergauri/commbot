@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FAKE SAMPLE FOR TESTING. This is not a real alert.
+  It follows the CAP 1.2 format that NDMA's SACHET platform uses.
+  The phone number 05252-000000 is a placeholder.
+-->
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>DEMO-UP-FLOOD-0001</identifier>
+  <sender>demo-ddma@example.org</sender>
+  <sent>2026-09-20T09:30:00+05:30</sent>
+  <status>Actual</status>
+  <msgType>Alert</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>en-IN</language>
+    <category>Met</category>
+    <event>Flood</event>
+    <urgency>Immediate</urgency>
+    <severity>Severe</severity>
+    <certainty>Likely</certainty>
+    <expires>2026-09-21T09:30:00+05:30</expires>
+    <senderName>DEMO DDMA Bahraich</senderName>
+    <headline>Severe flood warning: Ghaghara river above danger mark</headline>
+    <description>The Ghaghara river at Elgin Bridge is flowing above the danger mark and is expected to rise further over the next 24 hours. Low-lying villages in Mahsi and Kaiserganj tehsils of Bahraich district are likely to be inundated.</description>
+    <instruction>Residents of low-lying areas should evacuate to the relief camp at Government Inter College, Mahsi. Move livestock to higher ground. Do not attempt to cross the river or flooded roads. Keep important documents and medicines ready. For help call the district control room at 1077 or 05252-000000.</instruction>
+    <area>
+      <areaDesc>Bahraich district (Mahsi, Kaiserganj tehsils)</areaDesc>
+      <polygon>27.95,81.45 27.95,81.75 27.55,81.75 27.55,81.45 27.95,81.45</polygon>
+    </area>
+  </info>
+  <info>
+    <language>hi-IN</language>
+    <category>Met</category>
+    <event>बाढ़</event>
+    <urgency>Immediate</urgency>
+    <severity>Severe</severity>
+    <certainty>Likely</certainty>
+    <expires>2026-09-21T09:30:00+05:30</expires>
+    <senderName>DEMO DDMA Bahraich</senderName>
+    <headline>गंभीर बाढ़ चेतावनी: घाघरा नदी खतरे के निशान से ऊपर</headline>
+    <description>एल्गिन ब्रिज पर घाघरा नदी खतरे के निशान से ऊपर बह रही है।</description>
+    <instruction>निचले इलाकों के लोग राजकीय इंटर कॉलेज, महसी स्थित राहत शिविर में जाएं। मदद के लिए 1077 पर कॉल करें।</instruction>
+    <area>
+      <areaDesc>बहराइच जिला (महसी, कैसरगंज तहसील)</areaDesc>
+      <polygon>27.95,81.45 27.95,81.75 27.55,81.75 27.55,81.45 27.95,81.45</polygon>
+    </area>
+  </info>
+</alert>
