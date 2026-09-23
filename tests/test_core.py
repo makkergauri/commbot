@@ -510,8 +510,10 @@ def test_demo_mode_is_read_only(store, settings):
     client = create_app(settings, store).test_client()
 
     page = client.get("/dashboard").data
-    assert b"Public demo" in page
-    assert b'action="/dashboard/review"' not in page     # no buttons
+    # Sample figures are labelled; the alerts themselves are real, so they aren't.
+    assert b"Sample data" in page
+    assert b"subscribers are samples" in page
+    assert b'action="/dashboard/review"' not in page     # no buttons for visitors
 
     r = client.post("/dashboard/review", data={"alert_id": "t:DEMO-UP-FLOOD-0001",
                                                "action": "approve"})

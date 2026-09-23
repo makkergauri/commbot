@@ -7,8 +7,8 @@ The control room, as five small pages rather than one long scroll.
   Activity     proof of what was actually delivered
   How it works the explanation, for anyone opening the link cold
 
-The split matters: a duty officer only ever needs the first page, and every
-other question has somewhere to live without cluttering it.
+I split it up because a duty officer only ever needs the first page, and every
+other question then has somewhere to live without cluttering it.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from .extract import HAZARDS
 from .localize import render_sms, sms_segments
 from .models import AlertFacts
 from .ui import (bar, donut, esc, hazard_colour, hazard_icon, hazard_name, icon,
-                 layout, map_svg, phone, severity_colour, tile)
+                 layout, map_svg, phone, sample_tag, severity_colour, tile)
 from .utils import fmt_local, now_utc, parse_iso
 
 # Enough to place a dot on the map. Alerts rarely carry coordinates, but the
@@ -59,6 +59,7 @@ def mask(phone: str) -> str:
 def _facts(row) -> AlertFacts:
     return AlertFacts.from_dict(json.loads(row["facts_json"]))
 
+
 def ago(iso: str) -> str:
     """'2 min ago', or an honest 'not yet' when no cycle has finished."""
     when = parse_iso(iso)
@@ -70,6 +71,7 @@ def ago(iso: str) -> str:
     if minutes < 60:
         return f"{minutes} min ago"
     return f"{minutes // 60}h ago"
+
 
 def time_left(valid_until: str) -> str:
     """"3h left" reads better than a timestamp when you're in a hurry."""
@@ -96,7 +98,7 @@ def locate(facts: AlertFacts):
     # everything to plain words before looking for a place name.
     haystack = re.sub(r"[^a-z]+", " ",
                       " ".join([facts.source_name or "", *facts.areas]).casefold())
-    # Longest names first so "andhra pradesh" beats a stray "andhra".
+    # Longest names first, so "andhra pradesh" beats a stray "andhra".
     for name, coords in sorted(PLACES.items(), key=lambda kv: -len(kv[0])):
         if name in haystack:
             return coords
@@ -118,11 +120,11 @@ def alert_card(row, token: str, read_only: bool = False) -> str:
     # In the public demo a visitor sees what an officer would decide on,
     # without being able to decide it for them.
     demo_note = ('<div class="flag" style="color:#a5f3fc;background:rgba(34,211,238,.08);'
-                 'border-color:rgba(34,211,238,.25)">Public demo: in a live deployment a duty '
-                 'officer approves or rejects this here. If nobody does within 10 minutes, '
-                 'official alerts are released automatically.</div>')
-    # The action must be the full path: a relative "review" would post to
-    # /review, which lands outside this blueprint.
+                 'border-color:rgba(34,211,238,.25)">In a live deployment a duty officer '
+                 'approves or rejects this here. If nobody does within 10 minutes, official '
+                 'alerts are released automatically.</div>')
+    # The action has to be the full path. I used a relative "review" first and
+    # it posted to /review, which lands outside this blueprint.
     return f"""<div class="card alert">
       <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:{sev}"></div>
       <div class="head">
@@ -209,14 +211,20 @@ def create_blueprint(settings, store) -> Blueprint:
         pending, live, logged = counts()
         subs = store.list_active_subscribers()
         totals = store.delivery_totals()
+        last = store.get_meta("last_cycle")
+        # No finished cycle and nothing stored means this copy has only just
+        # woken up, which is very different from "nothing is happening".
+        starting = not last and store.count_alerts() == 0
+        tracked = len(pending) + len(live) + len(logged)
 
         tiles = "".join([
             tile(len(pending), "Waiting for approval",
                  "A person checks these before anything is sent.", "#ffc53d", "clock"),
             tile(len(live), "Live warnings", "Active now and cleared to send.", "#ff2d55", "bolt"),
-            tile(len(subs), "People signed up", "Each gets only their own district.",
-                 "#a78bfa", "people"),
-            tile(totals.get("sent", 0), "Messages delivered",
+            tile(len(subs), "People signed up" + (sample_tag() if settings.demo_mode else ""),
+                 "Each gets only their own district.", "#a78bfa", "people"),
+            tile(totals.get("sent", 0),
+                 "Messages delivered" + (sample_tag() if settings.demo_mode else ""),
                  f"{totals.get('failed', 0)} failed to send.", "#34d399", "send"),
         ])
 
@@ -243,7 +251,7 @@ def create_blueprint(settings, store) -> Blueprint:
 
         <section><h2>Needs your decision</h2>
           {"".join(alert_card(r, token, settings.demo_mode) for r in pending[:4])
-           or '<div class="empty">Nothing is waiting. New warnings appear here for approval.</div>'}
+           or f'<div class="empty">{"Reading the feed now, nothing to show yet." if starting else "Nothing is waiting. New warnings appear here for approval."}</div>'}
           {f'<a class="chip" href="/dashboard/alerts{"?token=" + token if token else ""}">'
              f'See all {len(pending)} waiting</a>' if len(pending) > 4 else ''}
         </section>
@@ -262,17 +270,36 @@ def create_blueprint(settings, store) -> Blueprint:
           </div>
         </section>"""
 
-        headline = ("Warnings are waiting for your decision" if pending
-                    else "All clear across the network")
-        aside = readout(len(live), "live warnings being tracked right now", [
+        if starting:
+            # A visitor landing during a cold start shouldn't be told all is
+            # well. Nothing has been checked yet, and that's a different thing.
+            headline = "Fetching the latest warnings"
+            lede = ("This copy just woke up and is reading India's national alert feed. "
+                    "Give it a moment, then refresh.")
+        elif settings.demo_mode:
+            headline = ("Live disaster warnings across India" if tracked
+                        else "No warnings are active right now")
+            lede = ("Official warnings, turned into short messages in people's own language "
+                    "and sent by SMS to the districts affected. This page shows the real feed, "
+                    "as a duty officer would see it.")
+        else:
+            headline = ("Warnings are waiting for your decision" if pending
+                        else "All clear across the network")
+            lede = ("Official disaster warnings, turned into short messages in people's own "
+                    "language and sent by SMS to the districts affected.")
+
+        # On the hosted copy nobody can approve anything, so the headline
+        # number is everything being tracked rather than what's cleared to send.
+        big = tracked if settings.demo_mode else len(live)
+        caption = ("warnings being tracked right now" if settings.demo_mode
+                   else "live warnings being tracked right now")
+        aside = readout(big, caption, [
+            ("Live now", len(live)),
             ("Awaiting approval", len(pending)),
             ("People covered", len(subs)),
-            ("Messages delivered", totals.get("sent", 0)),
-            ("Feed checked every", "2 min"),
+            ("Feed last checked", ago(last)),
         ])
-        return Response(layout("", "Live from India's alert feeds", headline,
-                               "Official disaster warnings, turned into short messages in "
-                               "people's own language and sent by SMS to the districts affected.",
+        return Response(layout("", "Live from India's alert feeds", headline, lede,
                                body, token, aside, strip_items(pending + live), settings.demo_mode),
                         mimetype="text/html")
 
@@ -308,7 +335,7 @@ def create_blueprint(settings, store) -> Blueprint:
         <section><h2>Live warnings</h2><div class="chips">{"".join(chips)}</div>
           {alert_list(shown, "No warnings are live right now.")}</section>
         <section><h2>Logged, not sent</h2>
-          <p class="note">Minor or unclear alerts, and alerts naming no area we can match.
+          <p class="note">Minor or unclear alerts, and alerts with no area I can match to a district.
              People can still ask for these by texting STATUS.</p>
           {alert_list(logged[:12], "Nothing logged.")}</section>"""
 
@@ -356,7 +383,7 @@ def create_blueprint(settings, store) -> Blueprint:
             {donut([("Hindi", hindi, "#a78bfa"), ("English", len(subs) - hindi, "#22d3ee")])}</div>
         </section>
         <section><h2>Subscribers</h2><div class="card pad">
-          <p class="note">Numbers are part-hidden here. People join by texting JOIN and their
+          <p class="note">{"These are sample entries on the hosted copy, not real people. " if settings.demo_mode else ""}Numbers are part-hidden here. People join by texting JOIN and their
              district, and leave by texting STOP.</p>
           {f'<table><tr><th>Number</th><th>District</th><th>Language</th></tr>{rows}</table>'
            if rows else '<p class="note">Nobody has signed up yet.</p>'}</div></section>"""
@@ -366,7 +393,8 @@ def create_blueprint(settings, store) -> Blueprint:
             ("Hindi", hindi), ("English", len(subs) - hindi),
             ("Cost per person", "one SMS"),
         ])
-        return Response(layout("/people", "Who receives the alerts",
+        return Response(layout("/people",
+                               "Sample subscribers" if settings.demo_mode else "Who receives the alerts",
                                "Reaching people on the phones they already own",
                                "Nobody is added without asking. Joining, changing language and "
                                "leaving all happen by SMS, so a basic phone is enough.",
@@ -409,7 +437,8 @@ def create_blueprint(settings, store) -> Blueprint:
             ("Duplicate messages", 0),
             ("Hourly cap per person", 4),
         ])
-        return Response(layout("/activity", "What actually went out",
+        return Response(layout("/activity",
+                               "Sample delivery log" if settings.demo_mode else "What actually went out",
                                "Every message, logged and accounted for",
                                "Nobody gets the same warning twice, and nobody gets more than a "
                                "few messages an hour unless the situation is extreme.",
@@ -493,8 +522,8 @@ def create_blueprint(settings, store) -> Blueprint:
             return Response("Not allowed.", status=403)
         alert_id = request.form.get("alert_id", "")
         status = "approved" if request.form.get("action") == "approve" else "rejected"
-        # Whoever holds the duty phone is the reviewer. If you need real names
-        # in the audit trail, put logins in front of these pages.
+        # Whoever holds the duty phone is the reviewer. For real names in the
+        # audit trail, put logins in front of these pages.
         store.set_status(alert_id, status, reviewed_by="dashboard")
         token = request.form.get("token", "")
         return redirect(f"/dashboard?token={token}" if token else "/dashboard")

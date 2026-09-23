@@ -273,11 +273,13 @@ def severity_colour(name: str) -> str:
 
 
 def tile(number, key, sub, colour, icon_name) -> str:
+    # `key` may carry a small tag element, so it goes through as HTML.
+    # Everything in it is written by me, never by a feed or a person.
     return f"""<div class="card tile" style="--c:{colour}">
       <div style="position:absolute;inset:0 0 auto 0;height:2px;background:{colour}"></div>
       <div class="ic" style="background:{colour}1f">{icon(icon_name, colour)}</div>
       <div class="n" style="color:{colour}">{number}</div>
-      <div class="k">{esc(key)}</div><div class="s">{esc(sub)}</div></div>"""
+      <div class="k">{key}</div><div class="s">{esc(sub)}</div></div>"""
 
 
 def bar(label, count, total, colour) -> str:
@@ -354,13 +356,18 @@ def map_svg(located) -> str:
       {"".join(dots)}</svg>"""
 
 
-def demo_banner() -> str:
-    return ('<div style="background:linear-gradient(90deg,rgba(34,211,238,.14),rgba(167,139,250,.14));'
-            'border-bottom:1px solid var(--edge);font-size:13px;color:var(--ink)">'
-            '<div class="wrap" style="padding:10px 24px">'
-            '<b>Public demo.</b> <span style="color:var(--dim)">The alerts are live from India\'s '
-            'government feed. Subscribers are fictional and no SMS is sent from this copy. '
-            'Real delivery is shown in the project README.</span></div></div>')
+def sample_tag(text: str = "Sample data") -> str:
+    """
+    Marks the parts of a hosted copy that aren't real, and only those parts.
+
+    The alerts are genuinely live, so they carry no label. Subscribers and
+    delivery figures on the public copy are examples, and saying so quietly
+    beside them beats a banner across every page.
+    """
+    return (f'<span style="font-size:10.5px;font-weight:700;letter-spacing:.12em;'
+            f'text-transform:uppercase;color:var(--cyan);border:1px solid var(--edge);'
+            f'border-radius:6px;padding:3px 8px;margin-left:10px;vertical-align:2px">'
+            f'{esc(text)}</span>')
 
 
 def ticker(items) -> str:
@@ -395,7 +402,12 @@ def layout(active: str, eyebrow: str, headline: str, lede: str, body: str,
   <div class="logo"><i>{icon('shield', '#22d3ee', 17)}</i>CommBot</div>
   <nav class="nav">{nav}</nav>
 </div></div>
-{demo_banner() if demo else ""}
+<footer><div class="wrap">
+  Alerts come from NDMA's SACHET platform, published by IMD, the Central Water Commission and
+  state disaster management authorities. CommBot relays official warnings, it never issues its
+  own. Boundary from DataMeet's open India map (CC-BY). Page refreshes every 90 seconds.
+  {"<br>On this hosted copy the alerts are live, the subscribers are samples, and no SMS is sent from it." if demo else ""}
+</div></footer>
 {ticker(strip or [])}
 <div class="wrap"><div class="hero">
   <div>
