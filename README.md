@@ -1,239 +1,168 @@
 # CommBot
 
-Multilingual disaster alerts over SMS and phone calls, built to keep working when the internet doesn't.
+Disaster warnings from India's government feed, turned into Hindi or English SMS and sent to the districts affected.
 
-CommBot reads official warnings (CAP alerts from NDMA's SACHET platform, IMD, state disaster authorities), decides who needs to hear what, turns each alert into a short message in the person's own language, and sends it by SMS. People can also text back or call in to ask "what's happening?", "where's the relief camp?" or "what number do I call?".
+**Live control room:** [commbot-wel7.onrender.com](https://commbot-wel7.onrender.com)
 
+When a flood or storm warning is issued in India, it exists. It's published, it's accurate, and it's free to read. It just doesn't reach the person standing next to the river, because it's in English, on a website, behind a data connection they may not have.
 
-## 1. How it works
+CommBot closes that gap. It reads the official feed, extracts only what can be verified, and sends a short message in the reader's own language to a phone that costs ₹1,000 and has no internet.
 
-```mermaid
-flowchart LR
-    A[CAP feeds<br/>SACHET / IMD] --> C[Ingest]
-    B[Open-Meteo<br/>rain forecast] --> C
-    C --> D[Extract facts<br/>rules + optional LLM]
-    D --> E[Validate against<br/>source text]
-    E --> F[Score & target<br/>decision agent]
-    F -->|high score| G{Human review?}
-    F -->|low score| H[(Stored: info only)]
-    G -->|approved / timeout| I[Render from<br/>reviewed templates]
-    I --> J[SMS<br/>Twilio / Android gateway]
-    H --> K[Pull channels]
-    I --> K
-    K --> L[SMS commands<br/>STATUS / SHELTER]
-    K --> M[IVR call<br/>+ voice questions]
-```
+![A real alert delivered in Hindi](docs/real-sms.png)
 
-The big idea is that **the LLM never writes the warning**. It only picks from fixed lists (hazard type, recommended actions) and copies text that really exists in the official alert (place names, shelter names). Everything it returns is checked against the source, and anything that can't be found there is thrown away. The actual SMS is assembled from phrase templates that a native speaker has reviewed.
-
-The second big idea is **push vs pull**. Only serious, official alerts get pushed as SMS. Everything else (minor advisories, model forecasts) is stored and available when someone asks. This avoids alert fatigue, which is what makes people ignore the one message that matters.
+*A live Kerala rainfall warning, translated and delivered as an SMS during testing.*
 
 ---
 
-## 2. Project layout
+## How it works
 
-```
-commbot/
-├── commbot/
-│   ├── config.py          # all settings from env vars / .env
-│   ├── models.py          # RawAlert, AlertFacts, Subscriber
-│   ├── ingest/
-│   │   ├── cap_feed.py    # CAP XML + RSS/Atom feeds + local files
-│   │   └── weather.py     # Open-Meteo heavy-rain forecasts (unofficial)
-│   ├── extract.py         # rules + LLM extraction with validation
-│   ├── llm.py             # Hugging Face wrapper, optional
-│   ├── localize.py        # Hindi/English templates, SMS length fitting
-│   ├── prioritize.py      # scoring, targeting, dedup, rate limits
-│   ├── geo.py             # place-name matching, point-in-polygon
-│   ├── storage.py         # SQLite
-│   ├── pipeline.py        # collect -> ingest -> review -> dispatch
-│   ├── channels/sms.py    # console / Twilio / HTTP gateway senders
-│   ├── commands.py        # inbound SMS commands
-│   ├── qa.py              # grounded answers to citizen questions
-│   ├── asr.py             # speech-to-text (faster-whisper)
-│   ├── webhooks.py        # Flask: /sms, /voice, /voice/menu, /voice/question
-│   ├── firebase_sync.py   # optional dashboard mirror
-│   ├── cli.py             # command-line entry point
-│   └── wsgi.py            # for gunicorn
-├── samples/               # FAKE CAP alerts for testing
-├── tests/test_core.py
-├── scripts/commbot-poller.service
-├── Dockerfile
-├── requirements.txt
-├── requirements-optional.txt
-└── .env.example
-```
+1. **Read the official feed.** CommBot polls NDMA's SACHET platform every two minutes. Alerts come from IMD, the Central Water Commission and state disaster authorities in CAP format, so severity, urgency, area and expiry arrive as structured data rather than prose.
+
+2. **Extract only the facts.** Hazard type, districts, recommended actions, helpline numbers, relief camps. Anything that can't be found word-for-word in the official text is discarded, including anything a language model suggests.
+
+3. **Decide who needs it.** Each alert is scored on severity × urgency × certainty. Serious ones go to a human for approval; the rest stay available on request. People are matched by district name, or by GPS when the alert carries a boundary.
+
+4. **Write it in their language.** Messages are built from phrases reviewed by native speakers, never machine-translated live. A Hindi SMS holds only 70 characters per part, so the hazard, the first action and a helpline are kept, and everything else is trimmed in a fixed order.
+
+5. **Send it once.** SMS goes out through a phone gateway, which needs cell signal but no internet. The delivery log ensures nobody receives the same warning twice.
+
+People subscribe by texting `JOIN <district>`, and leave by texting `STOP`. No app, no smartphone, no data.
 
 ---
 
-## 3. Five-minute demo
+## Why the language model never writes the warning
 
-No accounts, no API keys, no internet needed.
+The model is the most constrained part of this system, deliberately.
+
+It may do two things: **pick from a fixed list**, and **copy text that already exists in the alert**. It can say the hazard is `FLOOD`, because that's one of nine values I defined. It can name a relief camp, and I keep it only if that exact string appears in the government bulletin.
+
+Everything else it returns is thrown away:
+
+```python
+# Our regex already finds every real number in the text, so any
+# number the LLM returns that we *didn't* find is made up.
+for phone in llm_output.get("helplines", []):
+    if normalize(phone) not in helplines:
+        warnings.append(f"Dropped helpline not found in source: {phone!r}")
+```
+
+There's a test that feeds the model a fake helpline, an invented shelter, a district not in the alert and an action code I never defined. All four must disappear or the build fails.
+
+The rules the system follows:
+
+- A language model may classify and copy. It never authors the warning.
+- Official severity always beats anything inferred.
+- No evacuation instruction unless the source says to evacuate.
+- Drills and test alerts never reach a phone.
+- Every message names its source and carries a working number to call.
+- If the feed, the model or the network fails, alerts still go out via the simpler path.
+
+The message reaches someone during a flood. They can't verify it, can't reach the issuing office, and will act on whatever it says. That's why boring and correct beats clever.
+
+---
+
+## What's real, and what the hosted copy can't do
+
+**On a machine with a gateway phone connected, CommBot sends real SMS.** That's how the screenshot above happened: a live Kerala warning, translated to Hindi, delivered through an Android phone's SIM to another handset.
+
+**The hosted copy at Render can't send**, because sending requires a phone with a SIM, and a cloud server doesn't have one. So the public site shows the real feed, the real decisions and the exact messages that would go out, with eight sample subscribers so the coverage pages aren't blank. Those are labelled as samples wherever they appear.
+
+To send at scale you'd need either an SMS provider with TRAI DLT registration, or a dedicated Android phone kept online as the gateway.
+
+---
+
+## Running it yourself
+
+Needs Python 3.11 or newer.
 
 ```bash
+git clone https://github.com/makkergauri/commbot.git
+cd commbot
 python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-
-python -m commbot.cli demo
-pytest -q
+pytest -q                        # 38 tests
 ```
 
-The demo registers three fake subscribers, ingests the sample alerts, sends SMS to the console, shows that duplicates aren't re-sent, simulates citizens texting in, and prints what a caller would hear. You should see the flood SMS go to the two Bahraich numbers (one Hindi, one English) and **not** to the Gorakhpur number, the minor heat advisory stored but not pushed, and the drill alert ignored entirely.
+Copy `.env.example` to `.env` and set the feed:
+
+CAP_FEEDS=https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml
+SMS_PROVIDER=console
+
+
+Then:
+
+```bash
+python -m commbot.cli run-once                          # one fetch cycle
+python -m commbot.cli add-subscriber --phone +91XXXXXXXXXX --district Bahraich --lang hi
+python -m commbot.cli serve --port 5000                 # control room at /dashboard
+```
+
+With `SMS_PROVIDER=console`, messages print to the terminal instead of being sent, which is how you should develop.
+
+### Sending real SMS
+
+Install [SMS Gateway for Android](https://github.com/capcom6/android-sms-gateway) on a phone with a SIM, switch on its local server, and put its details in `.env`:
+
+SMS_PROVIDER=android
+SMS_GATEWAY_URL=http://192.168.1.5:8080
+SMS_GATEWAY_USER=...
+SMS_GATEWAY_PASS=...
+
+
+Use a spare phone and SIM. That app can read every SMS the phone receives, including bank OTPs. CommBot ignores anything that isn't a mobile number, but the permission is still on the device.
 
 ---
 
-## 4. Build guide, phase by phase
+## The control room
 
-Each phase ends with a "done when" check. Don't move on until it passes; it's much easier to debug one layer at a time.
+Five pages, server-rendered, no JavaScript, so it loads on a weak connection:
 
-### Phase 0: Setup
+- **Overview**: what needs approving, a map of live warnings, breakdown by hazard
+- **Alerts**: everything current, filterable
+- **Coverage**: which districts are covered and in which language
+- **Activity**: the delivery log, with numbers part-hidden
+- **How it works**: the explanation, for anyone arriving cold
 
-Install Python 3.10+ and Git, then create the virtual environment as in the demo. Copy `.env.example` to `.env`. Leave `SMS_PROVIDER=console` until Phase 5, so you can't accidentally text real people.
-
-**Done when:** `python -m commbot.cli demo` and `pytest -q` both succeed.
-
-### Phase 1: Ingest official alerts
-
-**Why CAP?** The Common Alerting Protocol is the international standard for public warnings, and India's NDMA publishes alerts in CAP through the SACHET platform. CAP gives you severity, urgency, certainty, expiry and exact area polygons in a machine-readable form. That's far more reliable than scraping press releases, and it keeps you relaying official information rather than creating your own warnings.
-
-1. Visit the SACHET portal (sachet.ndma.gov.in) and find the public RSS/CAP feed link. Put it in `CAP_FEEDS`. You can list several feeds separated by commas, including your state's feed if it has one.
-2. Run `python -m commbot.cli -v run-once` and watch the logs.
-3. If a feed's format differs slightly from the standard, fix it in `cap_feed.py`, not downstream. `_strip_ns()` already handles CAP 1.1, 1.2 and namespace-less feeds.
-4. Optionally add `WEATHER_POINTS` for heavy-rain forecasts from Open-Meteo. These use IMD's rainfall categories (64.5 / 115.6 / 204.5 mm per day) but are marked **unofficial**, so they're never pushed on their own.
-
-Things `cap_feed.py` already takes care of for you: alerts with `status` other than `Actual` (exercises, tests, drafts) are dropped; `Cancel` messages retire the alerts they reference; `Update` messages replace the old version; and when an alert has several `<info>` blocks in different languages, the English one is used for extraction.
-
-**Done when:** real alerts show up in `commbot.db` (`sqlite3 commbot.db "select alert_id, status, score from alerts"`).
-
-### Phase 2: Extract facts (rules first, LLM second)
-
-Open `extract.py`. Extraction works in three layers.
-
-The **rules layer** always runs. It maps keywords (English and Hindi) to hazard types and action codes, pulls phone numbers with a regex that won't mistake dates or rainfall figures for numbers, and finds relief camps with a simple pattern. This alone handles most CAP alerts, because CAP already structures the important fields.
-
-The **LLM layer** is optional. Set `LLM_ENABLED=true`, add your `HF_TOKEN`, and `pip install huggingface_hub`. The prompt (`SYSTEM_PROMPT` in `extract.py`) asks for JSON only, restricts hazards and actions to fixed lists, and tells the model to copy names exactly. Any instruction-tuned model that follows JSON instructions well will do; try a few on your real alerts and compare.
-
-The **validation layer** is the important part. CAP's own severity always beats the LLM's. Areas, shelters and phone numbers from the LLM are kept only if they appear in the source text. Unknown action codes are dropped. And `EVACUATE` is removed unless the source actually says to evacuate, because an unnecessary evacuation order causes panic and blocks roads. Every dropped item is logged as a warning, which reviewers see in `commbot pending`.
-
-If the LLM is down, slow or returns junk, the system silently falls back to rules. **Don't make the LLM a hard dependency.** During a disaster, the internet link to an inference API is exactly the thing that fails.
-
-**Done when:** `pytest -q -k extract` passes, and you've run 20+ real past alerts through `extract_facts()` and checked the output by hand.
-
-### Phase 3: Localize
-
-Open `localize.py`. Messages are built from **reviewed phrase templates**, not machine-translated on the fly, because a bad translation of "move to higher ground" is a safety problem.
-
-To add a language (say Bengali):
-
-1. Copy the `"en"` block in `TEMPLATES` and give it the key `"bn"`.
-2. Translate every phrase. Keep them short: one non-Latin character switches the whole SMS to Unicode, which fits only 70 characters per segment instead of 160.
-3. **Get a native speaker to review every line**, ideally someone who has worked with local communities, and ask them to check register (plain, respectful, not bureaucratic).
-4. Add `"bn"` to `SUPPORTED_LANGS` and extend `PLACE_NAMES_HI` (or add a `PLACE_NAMES_BN`) so place names appear in the local script.
-5. Run `python -m commbot.cli preview <alert_id>` and read the output aloud.
-
-You can use IndicTrans2 (AI4Bharat) or the Bhashini translation API to produce a *first draft* of the templates. Just don't skip step 3.
-
-`render_sms()` fits each message into `MAX_SMS_SEGMENTS`, trimming in this order: extra actions, then the list of areas, then the source name, then the camp name. The hazard, the first action and a helpline number are never dropped. If no helpline is in the source, 112 is used.
-
-**Done when:** every template has been reviewed by a native speaker and `preview` output reads naturally.
-
-### Phase 4: The decision agent
-
-Open `prioritize.py`. The score is `severity × urgency × certainty × trust`, on a scale from 0 to 12. With the default `PUSH_THRESHOLD=6`, a Severe alert that's Immediate and Likely scores 7.2 and is pushed, while a Moderate, Expected, Likely one scores 3.2 and is only available on request. Unofficial sources get a 0.6 multiplier, which keeps model forecasts below the push line.
-
-Targeting uses GPS (polygon or circle from CAP) when a subscriber has coordinates, and falls back to whole-word district name matching.
-
-Before each SMS, `should_send()` checks that the person hasn't already received this alert, that they haven't had the same story (same hazard and areas) within `RESEND_COOLDOWN_MIN` unless it has gotten worse, and that they haven't passed `MAX_SMS_PER_HOUR`. Extreme alerts ignore the hourly limit.
-
-It's deliberately rule-based rather than an ML model. When a district officer asks "why did my village get this at 3am?", you need a clear answer, and every decision logs a reason.
-
-With `REQUIRE_APPROVAL=true`, pushable alerts wait in a review queue:
-
-```bash
-python -m commbot.cli pending
-python -m commbot.cli approve "sachet.ndma.gov.in:ALERT-ID" --by "Duty officer name"
-python -m commbot.cli reject  "sachet.ndma.gov.in:ALERT-ID" --by "Duty officer name"
-```
-
-Official alerts not reviewed within `APPROVAL_TIMEOUT_MIN` go out automatically, and official Extreme alerts skip the queue altogether. Tune these with your partner authority; the defaults are a starting point, not a recommendation.
-
-**Done when:** you've tuned the threshold on a set of past alerts, and a partner agrees with which ones would have been pushed.
-
-### Phase 5: Send SMS
-
-**For development**, stay on `console`.
-
-**With Twilio**, set `SMS_PROVIDER=twilio` and fill in the three `TWILIO_*` values. Start with a trial account and verified numbers only.
-
-**For India specifically**, commercial (A2P) SMS must go through TRAI's DLT system: you register as a business entity, register a sender ID (header), and get each message template approved. This takes time, so start early. The fixed templates in `localize.py` map naturally onto DLT templates, with variables for areas, phone numbers and times. Indian SMS providers often make DLT registration smoother than international ones, so compare options. Check each provider's current requirements before committing.
-
-**For offline resilience**, set `SMS_PROVIDER=http_gateway` and point `SMS_GATEWAY_URL` at an Android phone running an open-source SMS gateway app on the same local network. It sends through the phone's own SIM, so it works with no internet at all, only cell signal. Adjust `HTTPGatewaySender.payload()` to match your app's API. It's slow (a few messages per second at most) and the SIM's own sending limits apply, so treat it as the fallback, not the main path.
-
-**Done when:** a test phone receives the flood sample in Hindi and English, and you've checked how the Hindi message displays on a basic feature phone.
-
-### Phase 6: Inbound SMS and the IVR line
-
-1. Run the webhook server: `python -m commbot.cli serve --port 5000`.
-2. Expose it over HTTPS while testing. With ngrok: `ngrok http 5000`. Put the https URL in `PUBLIC_BASE_URL`.
-3. In the Twilio console, set your number's **Messaging** webhook to `POST {PUBLIC_BASE_URL}/sms` and **Voice** webhook to `POST {PUBLIC_BASE_URL}/voice`.
-4. Keep `VALIDATE_TWILIO_SIGNATURE=true`. Without it, anyone who finds your URL can send fake commands. The code rebuilds the public URL from `PUBLIC_BASE_URL`, because behind ngrok or a proxy the internal URL won't match Twilio's signature.
-
-SMS commands: `JOIN <district> [HI/EN]`, `STATUS`, `SHELTER`, `HELPLINE`, `STOP`, `HELP`.
-
-The voice flow reads the latest alert for the caller's district, then offers "press 1 to repeat, press 2 to ask a question". Phone numbers are read digit by digit ("1 0 7 7") so callers can actually dial them.
-
-A popular option in India is a **missed-call** line: the person gives a missed call and the system calls them back, so it costs them nothing. You can build this by making the incoming call handler reject the call and trigger an outbound call through the provider's API to the same `/voice` flow.
-
-**Done when:** you can text `JOIN Bahraich EN` then `STATUS`, and call the number and hear the alert.
-
-### Phase 7: Voice questions
-
-```bash
-pip install faster-whisper
-```
-
-When a caller presses 2, the call is recorded (up to 15 seconds), downloaded, transcribed with Whisper, matched to an intent (status / shelter / helpline) by keywords, and answered **only from stored official alerts**. Anything else gets "I can only share official alert information, call 112". A free-form chatbot answering "is the road to Mahsi safe?" would be tempted to invent an answer, and that's exactly what we must never do.
-
-Some things to know. Twilio waits about 15 seconds for the webhook, so use `ASR_MODEL_SIZE=small` or `base` on CPU and measure; if it's too slow, switch to an asynchronous callback (record, hang up, call back with the answer). Whisper also struggles with 8 kHz phone audio and regional speech, so record 50+ real test questions from people in your area and compare Whisper against AI4Bharat's Indic ASR models and the Bhashini ASR API; swapping means replacing one function, `asr.transcribe()`. Recordings are deleted right after transcription.
-
-**Done when:** at least 80% of your real test questions get the right intent. Improve the keyword lists in `qa.py` with the words people actually used.
-
-### Phase 8: Resilience and the edge box
-
-Plan for three failure levels.
-
-| Situation | What still works |
-|---|---|
-| Everything up | Cloud server, Twilio SMS, IVR, LLM |
-| Internet down, cell network up | Edge box on local power with SQLite, cached alerts, rules-only extraction, `http_gateway` SMS through an Android phone. For inbound SMS, add a small route that receives your gateway app's forwarded messages and calls `handle_sms_command()` |
-| Cell network down | Out of scope for SMS. Look at LoRa mesh (Meshtastic) nodes at panchayat offices and community radio as a stretch goal |
-
-The edge box can be a Raspberry Pi or old laptop with a UPS or solar battery, running the same code (see `scripts/commbot-poller.service`). Keep a copy of the subscriber list on it. Test it by physically unplugging the router.
-
-### Phase 9: Dashboard (optional)
-
-```bash
-pip install firebase-admin
-```
-
-Set `FIREBASE_CREDENTIALS` to a service account JSON path. Alerts are mirrored to a Firestore `alerts` collection so a simple web dashboard can show live, pending and sent alerts. SQLite remains the source of truth, and a Firebase failure never blocks an alert.
+Approve buttons show the exact Hindi and English text that will be sent before you approve it.
 
 ---
 
-## 5. Safety design
+## What real data taught me
 
-These are the rules the code is built around. If you change the code, keep them true.
+Most of the work wasn't the pipeline, it was the mess the real feed contains.
 
-1. **The LLM picks and copies; it never writes warnings.** All outgoing text comes from reviewed templates plus validated fields.
-2. **Official structured data beats model output.** CAP severity, urgency and areas are never overridden by an LLM.
-3. **If in doubt, leave it out.** Unverifiable numbers, shelters and places are dropped and logged.
-4. **No evacuation orders the source didn't give.**
-5. **Drills never reach phones.** Only `status=Actual` alerts are processed.
-6. **Always give a working number.** Fall back to 112.
-7. **Always say where it came from.** Messages name the source so people know it's a relay of official information, not CommBot's own warning.
-8. **Unofficial forecasts are never pushed.**
-9. **Degrade, don't die.** Every external dependency (LLM, feeds, Firebase, ASR) can fail without stopping alerts.
+**The area field is often useless.** Real values include `some parts`, `9 districts of Gujarat`, `6 Mandals` and `MOD TSRA`, which is aviation shorthand for thunderstorm with rain, not a place. Each needed its own rule, and where no area can be matched, CommBot logs the alert rather than pretending it can target it.
+
+**Identifiers lie.** The feed's item id is `1789916877126017`; the alert inside it is `IN-1789916877126017_17`. I assumed they matched, which meant re-downloading every alert on every poll against a government server, invisibly, forever.
+
+**Geometry can be absurd.** One alert carried 64,472 boundary points. They're now thinned to 400, which loses nothing at district scale.
+
+**The bug only a phone could find.** After weeks of console testing, the first real SMS arrived at 8:28 for a warning valid until 8:30. Every layer was correct and the message was useless. CommBot now refuses to push anything with under fifteen minutes left, and there's a test named after it.
 
 ---
 
+## Limitations
+
+- **Hindi and English only.** Every new language needs a native speaker to review the phrases, and I'd rather have two correct languages than six risky ones.
+- **Place names are transliterated from a small hand-written list**, so Hindi messages show some district names in Latin script.
+- **Polygon fetching is capped** at 25 per cycle to be gentle on the government server, so some alerts are targeted by district name only.
+- **A single SIM can't serve a district.** Indian prepaid plans typically cap around 100 SMS a day. Real deployment means DLT registration and a bulk provider.
+- **No voice line.** An IVR version existed early on, then was removed when the project moved off Twilio.
+
+---
+
+## Next
+
+- Bengali, Tamil, Marathi and Telugu, each reviewed by a native speaker before release
+- Automatic transliteration of place names
+- Central Water Commission river-level data as a second source
+- A pilot with a district authority or NGO, which is the only real test of whether this helps
+
+---
+
+## Credits and licence
+
+Alerts come from NDMA's SACHET platform, published by IMD, the Central Water Commission and state disaster management authorities. CommBot relays official warnings; it never issues its own. The India boundary is from [DataMeet's](https://github.com/datameet/maps) open map, CC-BY.
+
+MIT licensed.
