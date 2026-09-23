@@ -59,6 +59,17 @@ def mask(phone: str) -> str:
 def _facts(row) -> AlertFacts:
     return AlertFacts.from_dict(json.loads(row["facts_json"]))
 
+def ago(iso: str) -> str:
+    """'2 min ago', or an honest 'not yet' when no cycle has finished."""
+    when = parse_iso(iso)
+    if not when:
+        return "not yet"
+    minutes = int((now_utc() - when).total_seconds() // 60)
+    if minutes < 1:
+        return "just now"
+    if minutes < 60:
+        return f"{minutes} min ago"
+    return f"{minutes // 60}h ago"
 
 def time_left(valid_until: str) -> str:
     """"3h left" reads better than a timestamp when you're in a hurry."""

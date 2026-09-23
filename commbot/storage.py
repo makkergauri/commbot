@@ -56,6 +56,13 @@ CREATE TABLE IF NOT EXISTS deliveries (
 );
 CREATE INDEX IF NOT EXISTS idx_deliveries_phone ON deliveries(phone, sent_at);
 
+-- Small odds and ends the app needs to remember between cycles, like when
+-- the feed was last checked. One row per key.
+CREATE TABLE IF NOT EXISTS meta (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+);
+
 -- Feed items we've already handled, keyed by RSS guid (which can differ
 -- from the CAP identifier, so this can't live in the alerts table).
 CREATE TABLE IF NOT EXISTS feed_items (
@@ -192,7 +199,17 @@ class Store:
         if district:
             alerts = [a for a in alerts if area_matches(district, a.areas)]
         return alerts
+    # --- odds and ends ---------------------------------------------------
 
+    def set_meta(self, key: str, value: str) -> None:
+        self._exec("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
+
+    def get_meta(self, key: str, default: str = "") -> str:
+        rows = self._query("SELECT value FROM meta WHERE key=?", (key,))
+        return rows[0]["value"] if rows else default
+
+    def count_alerts(self) -> int:
+        return self._query("SELECT COUNT(*) AS n FROM alerts")[0]["n"]
     # --- feed items ---------------------------------------------------------
 
     def feed_item_seen(self, source: str, guid: str) -> bool:
