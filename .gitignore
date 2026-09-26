@@ -7,3 +7,8 @@ __pycache__/
 *.wav
 firebase-*.json
 run.log
+
+# Local virtual environments
+.venv/
+venv/
+env/
