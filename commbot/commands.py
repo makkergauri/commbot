@@ -1,6 +1,7 @@
 """
+"""
 Inbound SMS commands. Kept separate from Flask so the same logic works for
-Twilio, an Android gateway, or a unit test.
+an Android gateway, any HTTP SMS gateway, or a unit test.
 
 Commands (case-insensitive):
   JOIN <district> [HI|EN]   subscribe / change district or language

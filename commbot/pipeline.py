@@ -15,7 +15,7 @@ from .extract import extract_facts
 from .ingest import add_polygons, fetch_feed, fetch_rain_alerts
 from .localize import render_sms
 from .prioritize import score, should_send, subscriber_matches
-from .utils import now_utc, parse_iso
+from .utils import now_utc, parse_iso, to_iso
 
 log = logging.getLogger(__name__)
 
@@ -161,6 +161,9 @@ def run_once(settings, store, sender, llm=None) -> dict:
     released = release_timed_out(store, settings)
     sent = dispatch(store, sender, settings)
     summary = {"fetched": len(raws), "new": len(new), "auto_released": released, "sms_sent": sent}
+    # Remembered so the dashboard can say when the feed was last checked, and
+    # so "nothing is happening" can be told apart from "nothing has run yet".
+    store.set_meta("last_cycle", to_iso(now_utc()))
     log.info("Cycle done: %s", summary)
     return summary
 

@@ -81,14 +81,15 @@ cd commbot
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-pytest -q                        # 38 tests
+pytest -q                        # 35 tests
 ```
 
 Copy `.env.example` to `.env` and set the feed:
 
+```
 CAP_FEEDS=https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml
 SMS_PROVIDER=console
-
+```
 
 Then:
 
@@ -104,11 +105,12 @@ With `SMS_PROVIDER=console`, messages print to the terminal instead of being sen
 
 Install [SMS Gateway for Android](https://github.com/capcom6/android-sms-gateway) on a phone with a SIM, switch on its local server, and put its details in `.env`:
 
+```
 SMS_PROVIDER=android
 SMS_GATEWAY_URL=http://192.168.1.5:8080
 SMS_GATEWAY_USER=...
 SMS_GATEWAY_PASS=...
-
+```
 
 Use a spare phone and SIM. That app can read every SMS the phone receives, including bank OTPs. CommBot ignores anything that isn't a mobile number, but the permission is still on the device.
 

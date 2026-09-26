@@ -1,8 +1,8 @@
 """
 Command-line entry point.
 
-    python -m commbot.cli demo                 # try everything, no accounts needed
-    python -m commbot.cli init-db
+    python -m commbot.cli serve --port 5000    # control room + inbound SMS webhook
+   python -m commbot.cli preview <alert_id>   # see the SMS text in every language
     python -m commbot.cli add-subscriber --phone +91XXXXXXXXXX --district Bahraich --lang hi
     python -m commbot.cli run-once             # one fetch/send cycle
     python -m commbot.cli run                  # loop forever

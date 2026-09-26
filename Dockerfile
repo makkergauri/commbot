@@ -3,7 +3,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt requirements-optional.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-# Uncomment for LLM / voice / Firebase support:
+# Uncomment for LLM / Firebase support:
 # RUN pip install --no-cache-dir -r requirements-optional.txt
 
 COPY . .
